@@ -78,6 +78,11 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
     return try renderFromInfo(writer, info);
 }
 
+/// Quick check if this is a Node.js project (no subprocess, just file check)
+pub fn exists(cwd: []const u8) bool {
+    return isNodeProject(cwd);
+}
+
 fn isNodeProject(cwd: []const u8) bool {
     // Check for package.json
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;

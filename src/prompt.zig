@@ -82,51 +82,52 @@ pub fn render(result_allocator: std.mem.Allocator, temp_allocator: std.mem.Alloc
     var java_result = JavaResult{};
     var go_result = GoResult{};
 
-    // Determine which modules to run
-    const run_git = !cfg.git_branch.disabled and !cfg.git_status.disabled;
-    const run_node = !cfg.nodejs.disabled;
-    const run_rust = !cfg.rust.disabled;
-    const run_java = !cfg.java.disabled;
-    const run_go = !cfg.golang.disabled;
+    // LAZY LOADING: First do quick file checks (no subprocess) to detect which projects exist
+    // Only spawn threads for projects that are actually detected
+    const has_git = !cfg.git_branch.disabled and !cfg.git_status.disabled and git.exists(cwd);
+    const has_node = !cfg.nodejs.disabled and nodejs.exists(cwd);
+    const has_rust = !cfg.rust.disabled and rust.exists(cwd);
+    const has_java = !cfg.java.disabled and java.exists(cwd);
+    const has_go = !cfg.golang.disabled and golang.exists(cwd);
 
-    // Count active modules for parallel execution
-    var active_count: usize = 0;
-    if (run_git) active_count += 1;
-    if (run_node) active_count += 1;
-    if (run_rust) active_count += 1;
-    if (run_java) active_count += 1;
-    if (run_go) active_count += 1;
+    // Count detected projects for parallel execution
+    var detected_count: usize = 0;
+    if (has_git) detected_count += 1;
+    if (has_node) detected_count += 1;
+    if (has_rust) detected_count += 1;
+    if (has_java) detected_count += 1;
+    if (has_go) detected_count += 1;
 
-    if (active_count >= 2) {
-        // Run modules in parallel
+    if (detected_count >= 2) {
+        // Run detected modules in parallel (spawn threads only for detected projects)
         var threads: [5]?std.Thread = .{ null, null, null, null, null };
         var thread_idx: usize = 0;
 
-        if (run_git) {
+        if (has_git) {
             threads[thread_idx] = std.Thread.spawn(.{}, gitWorker, .{ &git_result, result_allocator, cwd }) catch null;
             if (threads[thread_idx] == null) gitWorker(&git_result, result_allocator, cwd);
             thread_idx += 1;
         }
 
-        if (run_node) {
+        if (has_node) {
             threads[thread_idx] = std.Thread.spawn(.{}, nodeWorker, .{ &node_result, result_allocator, cwd }) catch null;
             if (threads[thread_idx] == null) nodeWorker(&node_result, result_allocator, cwd);
             thread_idx += 1;
         }
 
-        if (run_rust) {
+        if (has_rust) {
             threads[thread_idx] = std.Thread.spawn(.{}, rustWorker, .{ &rust_result, result_allocator, cwd }) catch null;
             if (threads[thread_idx] == null) rustWorker(&rust_result, result_allocator, cwd);
             thread_idx += 1;
         }
 
-        if (run_java) {
+        if (has_java) {
             threads[thread_idx] = std.Thread.spawn(.{}, javaWorker, .{ &java_result, result_allocator, cwd }) catch null;
             if (threads[thread_idx] == null) javaWorker(&java_result, result_allocator, cwd);
             thread_idx += 1;
         }
 
-        if (run_go) {
+        if (has_go) {
             threads[thread_idx] = std.Thread.spawn(.{}, goWorker, .{ &go_result, result_allocator, cwd }) catch null;
             if (threads[thread_idx] == null) goWorker(&go_result, result_allocator, cwd);
             thread_idx += 1;
@@ -139,12 +140,12 @@ pub fn render(result_allocator: std.mem.Allocator, temp_allocator: std.mem.Alloc
             }
         }
     } else {
-        // Run sequentially (only 0-1 modules enabled)
-        if (run_git) gitWorker(&git_result, result_allocator, cwd);
-        if (run_node) nodeWorker(&node_result, result_allocator, cwd);
-        if (run_rust) rustWorker(&rust_result, result_allocator, cwd);
-        if (run_java) javaWorker(&java_result, result_allocator, cwd);
-        if (run_go) goWorker(&go_result, result_allocator, cwd);
+        // Run sequentially (only 0-1 projects detected)
+        if (has_git) gitWorker(&git_result, result_allocator, cwd);
+        if (has_node) nodeWorker(&node_result, result_allocator, cwd);
+        if (has_rust) rustWorker(&rust_result, result_allocator, cwd);
+        if (has_java) javaWorker(&java_result, result_allocator, cwd);
+        if (has_go) goWorker(&go_result, result_allocator, cwd);
     }
 
     return try renderResults(writer, &buffer, result_allocator, cfg, exit_status, duration_ms, git_result, node_result, rust_result, java_result, go_result);

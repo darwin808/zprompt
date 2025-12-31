@@ -55,6 +55,11 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
     return try renderFromInfo(writer, info);
 }
 
+/// Quick check if this is a Java project (no subprocess, just file check)
+pub fn exists(cwd: []const u8) bool {
+    return isJavaProject(cwd);
+}
+
 fn isJavaProject(cwd: []const u8) bool {
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
 

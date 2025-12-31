@@ -106,6 +106,17 @@ pub fn renderFromStatus(writer: anytype, status: GitStatus) !void {
     }
 }
 
+/// Quick check if this is a git repository (no subprocess, just file check)
+pub fn exists(cwd: []const u8) bool {
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const git_path = std.fmt.bufPrint(&path_buf, "{s}/.git", .{cwd}) catch return false;
+    if (std.fs.cwd().access(git_path, .{})) |_| {
+        return true;
+    } else |_| {
+        return false;
+    }
+}
+
 /// Convenience wrapper for non-parallel use
 pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !bool {
     const status = detect(allocator, cwd) orelse return false;

@@ -61,6 +61,11 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
     return try renderFromInfo(writer, info);
 }
 
+/// Quick check if this is a Go project (no subprocess, just file check)
+pub fn exists(cwd: []const u8) bool {
+    return isGoProject(cwd);
+}
+
 fn isGoProject(cwd: []const u8) bool {
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
