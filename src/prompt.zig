@@ -3,6 +3,9 @@ const ansi = @import("utils/ansi.zig");
 const directory = @import("modules/directory.zig");
 const git = @import("modules/git.zig");
 const nodejs = @import("modules/nodejs.zig");
+const rust = @import("modules/rust.zig");
+const java = @import("modules/java.zig");
+const golang = @import("modules/golang.zig");
 const duration = @import("modules/duration.zig");
 const config = @import("config.zig");
 
@@ -15,6 +18,18 @@ const NodeResult = struct {
     info: ?nodejs.NodeInfo = null,
 };
 
+const RustResult = struct {
+    info: ?rust.RustInfo = null,
+};
+
+const JavaResult = struct {
+    info: ?java.JavaInfo = null,
+};
+
+const GoResult = struct {
+    info: ?golang.GoInfo = null,
+};
+
 // Thread worker functions
 fn gitWorker(result: *GitResult, allocator: std.mem.Allocator, cwd: []const u8) void {
     result.status = git.detect(allocator, cwd);
@@ -22,6 +37,18 @@ fn gitWorker(result: *GitResult, allocator: std.mem.Allocator, cwd: []const u8) 
 
 fn nodeWorker(result: *NodeResult, allocator: std.mem.Allocator, cwd: []const u8) void {
     result.info = nodejs.detect(allocator, cwd);
+}
+
+fn rustWorker(result: *RustResult, allocator: std.mem.Allocator, cwd: []const u8) void {
+    result.info = rust.detect(allocator, cwd);
+}
+
+fn javaWorker(result: *JavaResult, allocator: std.mem.Allocator, cwd: []const u8) void {
+    result.info = java.detect(allocator, cwd);
+}
+
+fn goWorker(result: *GoResult, allocator: std.mem.Allocator, cwd: []const u8) void {
+    result.info = golang.detect(allocator, cwd);
 }
 
 /// Render prompt with parallel detection
@@ -48,39 +75,79 @@ pub fn render(result_allocator: std.mem.Allocator, temp_allocator: std.mem.Alloc
         try writer.writeAll(" ");
     }
 
-    // Parallel detection for git and nodejs
+    // Initialize all results
     var git_result = GitResult{};
     var node_result = NodeResult{};
+    var rust_result = RustResult{};
+    var java_result = JavaResult{};
+    var go_result = GoResult{};
 
+    // Determine which modules to run
     const run_git = !cfg.git_branch.disabled and !cfg.git_status.disabled;
     const run_node = !cfg.nodejs.disabled;
+    const run_rust = !cfg.rust.disabled;
+    const run_java = !cfg.java.disabled;
+    const run_go = !cfg.golang.disabled;
 
-    if (run_git and run_node) {
-        // Both enabled - run in parallel using thread-safe allocator
-        const git_thread = std.Thread.spawn(.{}, gitWorker, .{ &git_result, result_allocator, cwd }) catch {
-            // Fallback to sequential if thread spawn fails
-            gitWorker(&git_result, result_allocator, cwd);
-            nodeWorker(&node_result, result_allocator, cwd);
-            return try renderResults(writer, &buffer, result_allocator, cfg, exit_status, duration_ms, git_result, node_result);
-        };
+    // Count active modules for parallel execution
+    var active_count: usize = 0;
+    if (run_git) active_count += 1;
+    if (run_node) active_count += 1;
+    if (run_rust) active_count += 1;
+    if (run_java) active_count += 1;
+    if (run_go) active_count += 1;
 
-        const node_thread = std.Thread.spawn(.{}, nodeWorker, .{ &node_result, result_allocator, cwd }) catch {
-            // Join git thread first, then run node sequentially
-            git_thread.join();
-            nodeWorker(&node_result, result_allocator, cwd);
-            return try renderResults(writer, &buffer, result_allocator, cfg, exit_status, duration_ms, git_result, node_result);
-        };
+    if (active_count >= 2) {
+        // Run modules in parallel
+        var threads: [5]?std.Thread = .{ null, null, null, null, null };
+        var thread_idx: usize = 0;
 
-        // Wait for both threads to complete
-        git_thread.join();
-        node_thread.join();
-    } else if (run_git) {
-        gitWorker(&git_result, result_allocator, cwd);
-    } else if (run_node) {
-        nodeWorker(&node_result, result_allocator, cwd);
+        if (run_git) {
+            threads[thread_idx] = std.Thread.spawn(.{}, gitWorker, .{ &git_result, result_allocator, cwd }) catch null;
+            if (threads[thread_idx] == null) gitWorker(&git_result, result_allocator, cwd);
+            thread_idx += 1;
+        }
+
+        if (run_node) {
+            threads[thread_idx] = std.Thread.spawn(.{}, nodeWorker, .{ &node_result, result_allocator, cwd }) catch null;
+            if (threads[thread_idx] == null) nodeWorker(&node_result, result_allocator, cwd);
+            thread_idx += 1;
+        }
+
+        if (run_rust) {
+            threads[thread_idx] = std.Thread.spawn(.{}, rustWorker, .{ &rust_result, result_allocator, cwd }) catch null;
+            if (threads[thread_idx] == null) rustWorker(&rust_result, result_allocator, cwd);
+            thread_idx += 1;
+        }
+
+        if (run_java) {
+            threads[thread_idx] = std.Thread.spawn(.{}, javaWorker, .{ &java_result, result_allocator, cwd }) catch null;
+            if (threads[thread_idx] == null) javaWorker(&java_result, result_allocator, cwd);
+            thread_idx += 1;
+        }
+
+        if (run_go) {
+            threads[thread_idx] = std.Thread.spawn(.{}, goWorker, .{ &go_result, result_allocator, cwd }) catch null;
+            if (threads[thread_idx] == null) goWorker(&go_result, result_allocator, cwd);
+            thread_idx += 1;
+        }
+
+        // Wait for all threads to complete
+        for (threads) |maybe_thread| {
+            if (maybe_thread) |thread| {
+                thread.join();
+            }
+        }
+    } else {
+        // Run sequentially (only 0-1 modules enabled)
+        if (run_git) gitWorker(&git_result, result_allocator, cwd);
+        if (run_node) nodeWorker(&node_result, result_allocator, cwd);
+        if (run_rust) rustWorker(&rust_result, result_allocator, cwd);
+        if (run_java) javaWorker(&java_result, result_allocator, cwd);
+        if (run_go) goWorker(&go_result, result_allocator, cwd);
     }
 
-    return try renderResults(writer, &buffer, result_allocator, cfg, exit_status, duration_ms, git_result, node_result);
+    return try renderResults(writer, &buffer, result_allocator, cfg, exit_status, duration_ms, git_result, node_result, rust_result, java_result, go_result);
 }
 
 fn renderResults(
@@ -92,6 +159,9 @@ fn renderResults(
     duration_ms: u64,
     git_result: GitResult,
     node_result: NodeResult,
+    rust_result: RustResult,
+    java_result: JavaResult,
+    go_result: GoResult,
 ) ![]u8 {
     // Render git result
     if (git_result.status) |status| {
@@ -111,6 +181,36 @@ fn renderResults(
             if (info.package_version) |pv| allocator.free(pv);
         }
         if (try nodejs.renderFromInfo(writer, info)) {
+            try writer.writeAll(" ");
+        }
+    }
+
+    // Render rust result
+    if (rust_result.info) |info| {
+        defer {
+            if (info.version) |v| allocator.free(v);
+        }
+        if (try rust.renderFromInfo(writer, info)) {
+            try writer.writeAll(" ");
+        }
+    }
+
+    // Render java result
+    if (java_result.info) |info| {
+        defer {
+            if (info.version) |v| allocator.free(v);
+        }
+        if (try java.renderFromInfo(writer, info)) {
+            try writer.writeAll(" ");
+        }
+    }
+
+    // Render go result
+    if (go_result.info) |info| {
+        defer {
+            if (info.version) |v| allocator.free(v);
+        }
+        if (try golang.renderFromInfo(writer, info)) {
             try writer.writeAll(" ");
         }
     }

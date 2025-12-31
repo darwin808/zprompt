@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const Config = struct {
     // Format string for the whole prompt
-    format: []const u8 = "$directory$git_branch$git_status$nodejs$cmd_duration$line_break$character",
+    format: []const u8 = "$directory$git_branch$git_status$nodejs$rust$java$golang$cmd_duration$line_break$character",
 
     // Directory module
     directory: DirectoryConfig = .{},
@@ -15,6 +15,15 @@ pub const Config = struct {
 
     // Node.js module
     nodejs: NodejsConfig = .{},
+
+    // Rust module
+    rust: RustConfig = .{},
+
+    // Java module
+    java: JavaConfig = .{},
+
+    // Go module
+    golang: GoConfig = .{},
 
     // Command duration module
     cmd_duration: CmdDurationConfig = .{},
@@ -65,6 +74,30 @@ pub const NodejsConfig = struct {
     detect_extensions: []const []const u8 = &.{ "js", "mjs", "cjs", "ts", "mts", "cts" },
     detect_files: []const []const u8 = &.{ "package.json", ".node-version", ".nvmrc" },
     detect_folders: []const []const u8 = &.{"node_modules"},
+};
+
+pub const RustConfig = struct {
+    disabled: bool = false,
+    format: []const u8 = "via [$symbol($version )]($style)",
+    symbol: []const u8 = "🦀 ",
+    style: []const u8 = "bold red",
+    detect_files: []const []const u8 = &.{"Cargo.toml"},
+};
+
+pub const JavaConfig = struct {
+    disabled: bool = false,
+    format: []const u8 = "via [$symbol($version )]($style)",
+    symbol: []const u8 = "☕ ",
+    style: []const u8 = "red dimmed",
+    detect_files: []const []const u8 = &.{ "pom.xml", "build.gradle", "build.gradle.kts", ".java-version" },
+};
+
+pub const GoConfig = struct {
+    disabled: bool = false,
+    format: []const u8 = "via [$symbol($version )]($style)",
+    symbol: []const u8 = "🐹 ",
+    style: []const u8 = "bold cyan",
+    detect_files: []const []const u8 = &.{ "go.mod", "go.sum", ".go-version" },
 };
 
 pub const CmdDurationConfig = struct {
@@ -193,6 +226,18 @@ fn applyConfig(config: *Config, section: []const u8, key: []const u8, value: []c
     } else if (std.mem.eql(u8, section, "nodejs")) {
         if (std.mem.eql(u8, key, "disabled")) {
             if (parseBool(value)) |b| config.nodejs.disabled = b;
+        }
+    } else if (std.mem.eql(u8, section, "rust")) {
+        if (std.mem.eql(u8, key, "disabled")) {
+            if (parseBool(value)) |b| config.rust.disabled = b;
+        }
+    } else if (std.mem.eql(u8, section, "java")) {
+        if (std.mem.eql(u8, key, "disabled")) {
+            if (parseBool(value)) |b| config.java.disabled = b;
+        }
+    } else if (std.mem.eql(u8, section, "golang")) {
+        if (std.mem.eql(u8, key, "disabled")) {
+            if (parseBool(value)) |b| config.golang.disabled = b;
         }
     } else if (std.mem.eql(u8, section, "cmd_duration")) {
         if (std.mem.eql(u8, key, "disabled")) {
