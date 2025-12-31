@@ -37,7 +37,7 @@ pub const GitBranchConfig = struct {
     format: []const u8 = "on [$symbol$branch]($style) ",
     symbol: []const u8 = " ",
     style: []const u8 = "bold purple",
-    truncation_length: u32 = 9223372036854775807, // max u64, effectively no truncation
+    truncation_length: u32 = std.math.maxInt(u32), // effectively no truncation
     truncation_symbol: []const u8 = "…",
 };
 
@@ -84,27 +84,29 @@ pub const CharacterConfig = struct {
 };
 
 pub fn load(allocator: std.mem.Allocator) !Config {
-    var config = Config{};
+    var cfg = Config{};
 
-    // Try to load from config files
-    const config_paths = [_][]const u8{
-        getConfigPath(allocator, "starship.toml") catch null,
-        getConfigPath(allocator, "zprompt.toml") catch null,
-    };
-
-    for (config_paths) |maybe_path| {
-        if (maybe_path) |path| {
-            defer allocator.free(path);
-
-            const content = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024) catch continue;
+    // Try starship.toml first
+    if (getConfigPath(allocator, "starship.toml")) |path| {
+        defer allocator.free(path);
+        if (std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024)) |content| {
             defer allocator.free(content);
+            parseToml(&cfg, content, allocator) catch {};
+            return cfg;
+        } else |_| {}
+    } else |_| {}
 
-            parseToml(&config, content, allocator) catch continue;
-            break;
-        }
-    }
+    // Try zprompt.toml
+    if (getConfigPath(allocator, "zprompt.toml")) |path| {
+        defer allocator.free(path);
+        if (std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024)) |content| {
+            defer allocator.free(content);
+            parseToml(&cfg, content, allocator) catch {};
+            return cfg;
+        } else |_| {}
+    } else |_| {}
 
-    return config;
+    return cfg;
 }
 
 fn getConfigPath(allocator: std.mem.Allocator, filename: []const u8) ![]u8 {

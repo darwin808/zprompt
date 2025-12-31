@@ -31,13 +31,13 @@ fn getDisplayPath(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
 fn truncatePath(allocator: std.mem.Allocator, path: []const u8, keep_components: usize) ![]u8 {
     if (path.len == 0) return try allocator.dupe(u8, "");
 
-    var components = std.ArrayList([]const u8).init(allocator);
-    defer components.deinit();
+    var components: std.ArrayList([]const u8) = .{};
+    defer components.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, path, '/');
     while (iter.next()) |comp| {
         if (comp.len > 0) {
-            try components.append(comp);
+            try components.append(allocator, comp);
         }
     }
 
@@ -48,18 +48,18 @@ fn truncatePath(allocator: std.mem.Allocator, path: []const u8, keep_components:
 
     // Take last N components
     const start = items.len - keep_components;
-    var result = std.ArrayList(u8).init(allocator);
-    errdefer result.deinit();
+    var result: std.ArrayList(u8) = .{};
+    errdefer result.deinit(allocator);
 
     // Add truncation indicator
-    try result.appendSlice("…/");
+    try result.appendSlice(allocator, "…/");
 
     for (items[start..], 0..) |comp, i| {
-        if (i > 0) try result.append('/');
-        try result.appendSlice(comp);
+        if (i > 0) try result.append(allocator, '/');
+        try result.appendSlice(allocator, comp);
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 test "home replacement" {

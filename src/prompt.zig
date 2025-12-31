@@ -7,10 +7,10 @@ const duration = @import("modules/duration.zig");
 const config = @import("config.zig");
 
 pub fn render(allocator: std.mem.Allocator, cfg: config.Config, exit_status: u8, duration_ms: u64) ![]u8 {
-    var buffer = std.ArrayList(u8).init(allocator);
-    errdefer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .{};
+    errdefer buffer.deinit(allocator);
 
-    const writer = buffer.writer();
+    const writer = buffer.writer(allocator);
 
     // Get current directory
     const cwd = std.fs.cwd().realpathAlloc(allocator, ".") catch "/";
@@ -38,9 +38,9 @@ pub fn render(allocator: std.mem.Allocator, cfg: config.Config, exit_status: u8,
 
     // Duration (if > min_time and not disabled)
     if (!cfg.cmd_duration.disabled) {
-        if (duration.renderWithConfig(writer, duration_ms, cfg.cmd_duration.min_time)) {
+        if (try duration.renderWithConfig(writer, duration_ms, cfg.cmd_duration.min_time)) {
             try writer.writeAll(" ");
-        } else |_| {}
+        }
     }
 
     // Newline before character
@@ -56,7 +56,7 @@ pub fn render(allocator: std.mem.Allocator, cfg: config.Config, exit_status: u8,
         try writer.writeAll(" ");
     }
 
-    return buffer.toOwnedSlice();
+    return buffer.toOwnedSlice(allocator);
 }
 
 test "render basic prompt" {

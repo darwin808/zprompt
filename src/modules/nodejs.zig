@@ -38,7 +38,7 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
         return false;
     }
 
-    var info = try getNodeInfo(allocator, cwd);
+    const info = try getNodeInfo(allocator, cwd);
     defer {
         if (info.version) |v| allocator.free(v);
         if (info.package_name) |n| allocator.free(n);
@@ -209,12 +209,14 @@ fn getSystemNodeVersion(allocator: std.mem.Allocator) ![]u8 {
     child.spawn() catch return error.NodeNotFound;
 
     const stdout = child.stdout.?;
-    const result = stdout.reader().readAllAlloc(allocator, 1024) catch return error.ReadFailed;
-    defer allocator.free(result);
+    var read_buffer: [256]u8 = undefined;
+    const bytes_read = stdout.read(&read_buffer) catch return error.ReadFailed;
 
     _ = child.wait() catch return error.WaitFailed;
 
-    const trimmed = std.mem.trim(u8, result, " \t\n\r");
+    if (bytes_read == 0) return error.EmptyVersion;
+
+    const trimmed = std.mem.trim(u8, read_buffer[0..bytes_read], " \t\n\r");
     if (trimmed.len == 0) return error.EmptyVersion;
 
     // Remove 'v' prefix

@@ -21,7 +21,7 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
     defer allocator.free(git_dir);
 
     // Get status
-    var status = try getStatus(allocator, cwd);
+    const status = try getStatus(allocator, cwd);
     defer {
         if (status.branch) |b| allocator.free(b);
         if (status.repo_state) |s| allocator.free(s);
@@ -264,13 +264,13 @@ fn getRepoState(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
 }
 
 fn runGitCommand(allocator: std.mem.Allocator, cwd: []const u8, args: []const []const u8) ![]u8 {
-    var argv = std.ArrayList([]const u8).init(allocator);
-    defer argv.deinit();
+    var argv: std.ArrayList([]const u8) = .{};
+    defer argv.deinit(allocator);
 
-    try argv.append("git");
-    try argv.append("-C");
-    try argv.append(cwd);
-    try argv.appendSlice(args);
+    try argv.append(allocator, "git");
+    try argv.append(allocator, "-C");
+    try argv.append(allocator, cwd);
+    try argv.appendSlice(allocator, args);
 
     var child = std.process.Child.init(argv.items, allocator);
     child.stdout_behavior = .Pipe;
@@ -278,12 +278,21 @@ fn runGitCommand(allocator: std.mem.Allocator, cwd: []const u8, args: []const []
 
     try child.spawn();
 
+    // Read stdout using buffered reader
     const stdout = child.stdout.?;
-    const result = try stdout.reader().readAllAlloc(allocator, 1024 * 1024);
+    var read_buffer: [4096]u8 = undefined;
+    var result: std.ArrayList(u8) = .{};
+    errdefer result.deinit(allocator);
+
+    while (true) {
+        const bytes_read = try stdout.read(&read_buffer);
+        if (bytes_read == 0) break;
+        try result.appendSlice(allocator, read_buffer[0..bytes_read]);
+    }
 
     _ = try child.wait();
 
-    return result;
+    return result.toOwnedSlice(allocator);
 }
 
 test "git status parsing" {

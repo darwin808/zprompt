@@ -4,6 +4,14 @@ const shell = @import("shell/zsh.zig");
 const prompt = @import("prompt.zig");
 const config = @import("config.zig");
 
+// Simple stdout write helper for Zig 0.15 compatibility
+fn stdout_write(data: []const u8) !void {
+    var written: usize = 0;
+    while (written < data.len) {
+        written += try std.posix.write(std.posix.STDOUT_FILENO, data[written..]);
+    }
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -33,8 +41,7 @@ pub fn main() !void {
 }
 
 fn printUsage() !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.writeAll(
+    try stdout_write(
         \\zprompt - A minimal, fast shell prompt
         \\
         \\USAGE:
@@ -53,29 +60,24 @@ fn printUsage() !void {
 }
 
 fn printVersion() !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.writeAll("zprompt 0.1.0\n");
+    try stdout_write("zprompt 0.1.0\n");
 }
 
 fn handleInit(args: []const []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
-
     if (args.len == 0) {
-        try stdout.writeAll("Error: missing shell argument. Use: zprompt init zsh\n");
+        try stdout_write("Error: missing shell argument. Use: zprompt init zsh\n");
         return;
     }
 
     const shell_name = args[0];
     if (std.mem.eql(u8, shell_name, "zsh")) {
-        try stdout.writeAll(shell.zsh_init_script);
+        try stdout_write(shell.zsh_init_script);
     } else {
-        try stdout.print("Error: unsupported shell '{s}'. Only 'zsh' is supported.\n", .{shell_name});
+        try stdout_write("Error: unsupported shell. Only 'zsh' is supported.\n");
     }
 }
 
 fn handlePrompt(allocator: std.mem.Allocator, args: []const []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
-
     // Load configuration
     const cfg = config.load(allocator) catch config.Config{};
 
@@ -97,10 +99,9 @@ fn handlePrompt(allocator: std.mem.Allocator, args: []const []const u8) !void {
     const prompt_str = try prompt.render(allocator, cfg, status, duration_ms);
     defer allocator.free(prompt_str);
 
-    try stdout.writeAll(prompt_str);
+    try stdout_write(prompt_str);
 }
 
 test "basic test" {
-    // Basic sanity test
     try std.testing.expect(true);
 }

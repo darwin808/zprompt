@@ -26,12 +26,12 @@ pub const Style = struct {
             codes[count] = 4;
             count += 1;
         }
-        if (self.fg) |fg| {
-            codes[count] = fg.toFgCode();
+        if (self.fg) |fg_color| {
+            codes[count] = fg_color.toFgCode();
             count += 1;
         }
-        if (self.bg) |bg| {
-            codes[count] = bg.toBgCode();
+        if (self.bg) |bg_color| {
+            codes[count] = bg_color.toBgCode();
             count += 1;
         }
 
