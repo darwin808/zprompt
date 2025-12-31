@@ -1,0 +1,111 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+            artifact: zprompt-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-linux
+            artifact: zprompt-linux-aarch64
+          - os: macos-latest
+            target: x86_64-macos
+            artifact: zprompt-macos-x86_64
+          - os: macos-latest
+            target: aarch64-macos
+            artifact: zprompt-macos-aarch64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0
+
+      - name: Build
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseFast
+
+      - name: Rename binary
+        run: |
+          mkdir -p dist
+          cp zig-out/bin/zprompt dist/${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find dist -type f -name 'zprompt-*' -exec cp {} release/ \;
+          chmod +x release/*
+          ls -la release/
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION="v0.1.$(date +%Y%m%d%H%M%S)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Installation
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/darwin808/zprompt/main/install.sh | bash
+            ```
+
+            ## Manual Download
+
+            Download the binary for your platform:
+            - **macOS Apple Silicon**: `zprompt-macos-aarch64`
+            - **macOS Intel**: `zprompt-macos-x86_64`
+            - **Linux x86_64**: `zprompt-linux-x86_64`
+            - **Linux ARM64**: `zprompt-linux-aarch64`
+
+            Then:
+            ```bash
+            chmod +x zprompt-*
+            mv zprompt-* ~/.local/bin/zprompt
+            eval "$(zprompt init zsh)"
+            ```
+          files: release/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
