@@ -44,56 +44,58 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
         try ansi.fg(writer, ")", .bright_black);
     }
 
-    // Status indicators
+    // Status indicators (Starship style - symbols only, no counts)
     var has_status = false;
-    var status_buf: [128]u8 = undefined;
+    var status_buf: [64]u8 = undefined;
     var status_len: usize = 0;
 
-    // Helper to append to status buffer
-    const append = struct {
-        fn call(buf: []u8, len: *usize, comptime fmt: []const u8, args: anytype) void {
-            const written = std.fmt.bufPrint(buf[len.*..], fmt, args) catch return;
-            len.* += written.len;
+    // Helper to append symbol to status buffer
+    const appendSymbol = struct {
+        fn call(buf: []u8, len: *usize, symbol: []const u8) void {
+            if (len.* + symbol.len <= buf.len) {
+                @memcpy(buf[len.*..][0..symbol.len], symbol);
+                len.* += symbol.len;
+            }
         }
     }.call;
 
     if (status.ahead > 0) {
-        append(&status_buf, &status_len, "⇡{d}", .{status.ahead});
+        appendSymbol(&status_buf, &status_len, "⇡");
         has_status = true;
     }
 
     if (status.behind > 0) {
-        append(&status_buf, &status_len, "⇣{d}", .{status.behind});
+        appendSymbol(&status_buf, &status_len, "⇣");
         has_status = true;
     }
 
     if (status.staged > 0) {
-        append(&status_buf, &status_len, "+{d}", .{status.staged});
+        appendSymbol(&status_buf, &status_len, "+");
         has_status = true;
     }
 
     if (status.modified > 0) {
-        append(&status_buf, &status_len, "!{d}", .{status.modified});
+        appendSymbol(&status_buf, &status_len, "!");
         has_status = true;
     }
 
     if (status.untracked > 0) {
-        append(&status_buf, &status_len, "?{d}", .{status.untracked});
+        appendSymbol(&status_buf, &status_len, "?");
         has_status = true;
     }
 
     if (status.deleted > 0) {
-        append(&status_buf, &status_len, "✘{d}", .{status.deleted});
+        appendSymbol(&status_buf, &status_len, "✘");
         has_status = true;
     }
 
     if (status.conflicted > 0) {
-        append(&status_buf, &status_len, "={d}", .{status.conflicted});
+        appendSymbol(&status_buf, &status_len, "=");
         has_status = true;
     }
 
     if (status.stash_count > 0) {
-        append(&status_buf, &status_len, "$", .{});
+        appendSymbol(&status_buf, &status_len, "$");
         has_status = true;
     }
 
