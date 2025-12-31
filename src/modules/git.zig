@@ -27,9 +27,9 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
         if (status.repo_state) |s| allocator.free(s);
     }
 
-    // Render branch with Nerd Font icon U+E725
+    // Render branch with Powerline icon U+E0A0
     try ansi.fg(writer, "on ", ansi.muted_color);
-    try ansi.bold(writer, "\xee\x9c\xa5 ", ansi.git_branch_color);
+    try ansi.bold(writer, "\xee\x82\xa0 ", ansi.git_branch_color);
 
     if (status.branch) |branch| {
         try ansi.bold(writer, branch, ansi.git_branch_color);
