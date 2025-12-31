@@ -100,14 +100,16 @@ pub fn fg(writer: anytype, text: []const u8, color: Color) !void {
     try colored(writer, text, .{ .fg = color });
 }
 
-// Common Starship colors
-pub const dir_color = Color.cyan;
-pub const git_branch_color = Color.magenta;
+// Starship-style colors
+pub const dir_color = Color.yellow;
+pub const git_branch_color = Color.yellow;
 pub const git_status_color = Color.red;
 pub const node_color = Color.green;
+pub const package_color = Color.yellow; // 208 in 256-color, using yellow
 pub const duration_color = Color.yellow;
 pub const success_color = Color.green;
 pub const error_color = Color.red;
+pub const muted_color = Color.bright_black;
 
 test "color codes" {
     try std.testing.expectEqual(@as(u8, 31), Color.red.toFgCode());

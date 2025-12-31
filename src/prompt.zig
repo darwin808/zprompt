@@ -49,9 +49,9 @@ pub fn render(allocator: std.mem.Allocator, cfg: config.Config, exit_status: u8,
     // Exit status character (if not disabled)
     if (!cfg.character.disabled) {
         if (exit_status == 0) {
-            try ansi.bold(writer, "❯", ansi.success_color);
+            try ansi.bold(writer, "→", ansi.success_color);
         } else {
-            try ansi.bold(writer, "❯", ansi.error_color);
+            try ansi.bold(writer, "→", ansi.error_color);
         }
         try writer.writeAll(" ");
     }

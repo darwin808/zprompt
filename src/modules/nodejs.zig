@@ -6,6 +6,7 @@ pub const NodeInfo = struct {
     version_source: VersionSource = .none,
     package_manager: ?PackageManager = null,
     package_name: ?[]const u8 = null,
+    package_version: ?[]const u8 = null,
 };
 
 pub const VersionSource = enum {
@@ -42,25 +43,29 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
     defer {
         if (info.version) |v| allocator.free(v);
         if (info.package_name) |n| allocator.free(n);
+        if (info.package_version) |pv| allocator.free(pv);
     }
 
-    // Only render if we have a version
-    if (info.version == null) {
-        return false;
+    var rendered = false;
+
+    // Show package version if available (📦 v1.0.0)
+    if (info.package_version) |pkg_ver| {
+        try ansi.fg(writer, "is ", ansi.muted_color);
+        try ansi.bold(writer, "📦 v", ansi.package_color);
+        try ansi.fg(writer, pkg_ver, ansi.package_color);
+        rendered = true;
     }
 
-    try ansi.fg(writer, "via ", .bright_black);
-    try ansi.bold(writer, "⬢ ", ansi.node_color);
-    try ansi.fg(writer, info.version.?, ansi.node_color);
-
-    // Package manager indicator
-    if (info.package_manager) |pm| {
-        try ansi.fg(writer, " (", .bright_black);
-        try ansi.fg(writer, pm.icon(), .bright_black);
-        try ansi.fg(writer, ")", .bright_black);
+    // Show node version - using Nerd Font icon U+E718
+    if (info.version) |ver| {
+        if (rendered) try writer.writeAll(" ");
+        try ansi.fg(writer, "via ", ansi.muted_color);
+        try ansi.bold(writer, "\xee\x9c\x98 v", ansi.node_color); // U+E718 Node.js icon
+        try ansi.fg(writer, ver, ansi.node_color);
+        rendered = true;
     }
 
-    return true;
+    return rendered;
 }
 
 fn isNodeProject(cwd: []const u8) bool {
@@ -99,7 +104,10 @@ fn isNodeProject(cwd: []const u8) bool {
 fn getNodeInfo(allocator: std.mem.Allocator, cwd: []const u8) !NodeInfo {
     var info = NodeInfo{};
 
-    // Priority: .nvmrc > .node-version > package.json engines > system
+    // Get package version from package.json
+    info.package_version = getPackageVersion(allocator, cwd) catch null;
+
+    // Priority: .nvmrc > .node-version > system (skip package.json engines - that's constraints, not actual version)
     info.version = getVersionFromNvmrc(allocator, cwd) catch null;
     if (info.version != null) {
         info.version_source = .nvmrc;
@@ -108,14 +116,10 @@ fn getNodeInfo(allocator: std.mem.Allocator, cwd: []const u8) !NodeInfo {
         if (info.version != null) {
             info.version_source = .node_version;
         } else {
-            info.version = getVersionFromPackageJson(allocator, cwd) catch null;
+            // Use actual system node version
+            info.version = getSystemNodeVersion(allocator) catch null;
             if (info.version != null) {
-                info.version_source = .package_json;
-            } else {
-                info.version = getSystemNodeVersion(allocator) catch null;
-                if (info.version != null) {
-                    info.version_source = .system;
-                }
+                info.version_source = .system;
             }
         }
     }
@@ -124,6 +128,35 @@ fn getNodeInfo(allocator: std.mem.Allocator, cwd: []const u8) !NodeInfo {
     info.package_manager = detectPackageManager(cwd);
 
     return info;
+}
+
+fn getPackageVersion(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const pkg_path = try std.fmt.bufPrint(&path_buf, "{s}/package.json", .{cwd});
+
+    const content = std.fs.cwd().readFileAlloc(allocator, pkg_path, 1024 * 1024) catch {
+        return error.FileNotFound;
+    };
+    defer allocator.free(content);
+
+    // Simple JSON parsing for "version": "x.y.z"
+    if (std.mem.indexOf(u8, content, "\"version\"")) |ver_pos| {
+        const after_ver = content[ver_pos..];
+        if (std.mem.indexOf(u8, after_ver, ":")) |colon_pos| {
+            const after_colon = after_ver[colon_pos + 1 ..];
+            if (std.mem.indexOf(u8, after_colon, "\"")) |quote_start| {
+                const value_start = after_colon[quote_start + 1 ..];
+                if (std.mem.indexOf(u8, value_start, "\"")) |quote_end| {
+                    const version = value_start[0..quote_end];
+                    if (version.len > 0) {
+                        return try allocator.dupe(u8, version);
+                    }
+                }
+            }
+        }
+    }
+
+    return error.VersionNotFound;
 }
 
 fn getVersionFromNvmrc(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
