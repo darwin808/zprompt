@@ -1,5 +1,6 @@
 const std = @import("std");
 const ansi = @import("../utils/ansi.zig");
+const native_status = @import("../git/status.zig");
 
 pub const GitStatus = struct {
     branch: ?[]const u8 = null,
@@ -160,13 +161,54 @@ fn findGitDir(allocator: std.mem.Allocator, start_path: []const u8) ![]u8 {
 fn getStatus(allocator: std.mem.Allocator, cwd: []const u8) !GitStatus {
     var status = GitStatus{};
 
+    // Find git directory
+    const git_dir = findGitDir(allocator, cwd) catch return status;
+    defer allocator.free(git_dir);
+
     // Get branch name from .git/HEAD
     status.branch = getBranch(allocator, cwd) catch null;
 
-    // Get status from git status --porcelain=v2 --branch
-    const result = runGitCommand(allocator, cwd, &.{ "status", "--porcelain=v2", "--branch" }) catch {
-        return status;
-    };
+    // Try native status detection first (faster, no subprocess)
+    if (native_status.getStatus(allocator, git_dir, cwd)) |native| {
+        status.modified = native.modified;
+        status.deleted = native.deleted;
+        status.conflicted = native.conflicted;
+        // Native doesn't detect staged (needs tree comparison) or untracked (needs dir walk)
+        // Fall back to subprocess for those if needed
+    } else |_| {
+        // Native parsing failed, fall back to subprocess
+        getStatusFromSubprocess(allocator, cwd, &status);
+    }
+
+    // Get ahead/behind from subprocess (lightweight call)
+    getAheadBehind(allocator, cwd, &status);
+
+    // Get stash count (native file read)
+    status.stash_count = getStashCount(allocator, cwd) catch 0;
+
+    // Get repo state (native file check)
+    status.repo_state = getRepoState(allocator, cwd) catch null;
+
+    return status;
+}
+
+fn getAheadBehind(allocator: std.mem.Allocator, cwd: []const u8, status: *GitStatus) void {
+    // Use rev-list for ahead/behind (faster than full git status)
+    const result = runGitCommand(allocator, cwd, &.{ "rev-list", "--left-right", "--count", "@{upstream}...HEAD" }) catch return;
+    defer allocator.free(result);
+
+    // Parse "behind\tahead\n"
+    var parts = std.mem.splitAny(u8, result, "\t\n ");
+    if (parts.next()) |behind_str| {
+        status.behind = std.fmt.parseInt(u32, behind_str, 10) catch 0;
+    }
+    if (parts.next()) |ahead_str| {
+        status.ahead = std.fmt.parseInt(u32, ahead_str, 10) catch 0;
+    }
+}
+
+fn getStatusFromSubprocess(allocator: std.mem.Allocator, cwd: []const u8, status: *GitStatus) void {
+    const result = runGitCommand(allocator, cwd, &.{ "status", "--porcelain=v2", "--branch" }) catch return;
     defer allocator.free(result);
 
     var lines = std.mem.splitScalar(u8, result, '\n');
@@ -207,14 +249,6 @@ fn getStatus(allocator: std.mem.Allocator, cwd: []const u8) !GitStatus {
             status.conflicted += 1;
         }
     }
-
-    // Get stash count
-    status.stash_count = getStashCount(allocator, cwd) catch 0;
-
-    // Get repo state
-    status.repo_state = getRepoState(allocator, cwd) catch null;
-
-    return status;
 }
 
 fn getBranch(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
@@ -246,13 +280,22 @@ fn getBranch(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
 }
 
 fn getStashCount(allocator: std.mem.Allocator, cwd: []const u8) !u32 {
-    const result = runGitCommand(allocator, cwd, &.{ "stash", "list" }) catch {
+    // Native file read: .git/logs/refs/stash contains one line per stash entry
+    const git_dir = findGitDir(allocator, cwd) catch return 0;
+    defer allocator.free(git_dir);
+
+    const stash_path = std.fs.path.join(allocator, &.{ git_dir, "logs", "refs", "stash" }) catch return 0;
+    defer allocator.free(stash_path);
+
+    const content = std.fs.cwd().readFileAlloc(allocator, stash_path, 1024 * 1024) catch {
+        // No stash file = no stashes
         return 0;
     };
-    defer allocator.free(result);
+    defer allocator.free(content);
 
+    // Count non-empty lines
     var count: u32 = 0;
-    var lines = std.mem.splitScalar(u8, result, '\n');
+    var lines = std.mem.splitScalar(u8, content, '\n');
     while (lines.next()) |line| {
         if (line.len > 0) count += 1;
     }
