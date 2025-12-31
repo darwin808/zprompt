@@ -15,18 +15,18 @@ pub const GitStatus = struct {
     repo_state: ?[]const u8 = null,
 };
 
-pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !bool {
-    // Find git directory
-    const git_dir = findGitDir(allocator, cwd) catch return false;
+/// Detect git status without rendering (for parallel execution)
+pub fn detect(allocator: std.mem.Allocator, cwd: []const u8) ?GitStatus {
+    // Find git directory - return null if not in a repo
+    const git_dir = findGitDir(allocator, cwd) catch return null;
     defer allocator.free(git_dir);
 
     // Get status
-    const status = try getStatus(allocator, cwd);
-    defer {
-        if (status.branch) |b| allocator.free(b);
-        if (status.repo_state) |s| allocator.free(s);
-    }
+    return getStatus(allocator, cwd) catch null;
+}
 
+/// Render git status from pre-computed detection result
+pub fn renderFromStatus(writer: anytype, status: GitStatus) !void {
     // Render branch with Powerline icon U+E0A0
     try ansi.fg(writer, "on ", ansi.muted_color);
     try ansi.bold(writer, "\xee\x82\xa0 ", ansi.git_branch_color);
@@ -104,7 +104,16 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
         try ansi.fg(writer, status_buf[0..status_len], ansi.git_status_color);
         try writer.writeAll("]");
     }
+}
 
+/// Convenience wrapper for non-parallel use
+pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !bool {
+    const status = detect(allocator, cwd) orelse return false;
+    defer {
+        if (status.branch) |b| allocator.free(b);
+        if (status.repo_state) |s| allocator.free(s);
+    }
+    try renderFromStatus(writer, status);
     return true;
 }
 

@@ -33,19 +33,18 @@ pub const PackageManager = enum {
     }
 };
 
-pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !bool {
+/// Detect node info without rendering (for parallel execution)
+pub fn detect(allocator: std.mem.Allocator, cwd: []const u8) ?NodeInfo {
     // Check if this is a Node.js project
     if (!isNodeProject(cwd)) {
-        return false;
+        return null;
     }
 
-    const info = try getNodeInfo(allocator, cwd);
-    defer {
-        if (info.version) |v| allocator.free(v);
-        if (info.package_name) |n| allocator.free(n);
-        if (info.package_version) |pv| allocator.free(pv);
-    }
+    return getNodeInfo(allocator, cwd) catch null;
+}
 
+/// Render node info from pre-computed detection result
+pub fn renderFromInfo(writer: anytype, info: NodeInfo) !bool {
     var rendered = false;
 
     // Show package version if available (📦 v1.0.0)
@@ -66,6 +65,17 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
     }
 
     return rendered;
+}
+
+/// Convenience wrapper for non-parallel use
+pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !bool {
+    const info = detect(allocator, cwd) orelse return false;
+    defer {
+        if (info.version) |v| allocator.free(v);
+        if (info.package_name) |n| allocator.free(n);
+        if (info.package_version) |pv| allocator.free(pv);
+    }
+    return try renderFromInfo(writer, info);
 }
 
 fn isNodeProject(cwd: []const u8) bool {

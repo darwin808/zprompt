@@ -77,7 +77,13 @@ fn handleInit(args: []const []const u8) !void {
     }
 }
 
-fn handlePrompt(allocator: std.mem.Allocator, args: []const []const u8) !void {
+fn handlePrompt(parent_allocator: std.mem.Allocator, args: []const []const u8) !void {
+    // Use arena allocator for all prompt-related allocations
+    // Single bulk deallocation instead of many small frees
+    var arena = std.heap.ArenaAllocator.init(parent_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
     // Load configuration
     const cfg = config.load(allocator) catch config.Config{};
 
@@ -96,8 +102,9 @@ fn handlePrompt(allocator: std.mem.Allocator, args: []const []const u8) !void {
         }
     }
 
-    const prompt_str = try prompt.render(allocator, cfg, status, duration_ms);
-    defer allocator.free(prompt_str);
+    // Render prompt - result allocated with parent_allocator for thread safety
+    const prompt_str = try prompt.render(parent_allocator, allocator, cfg, status, duration_ms);
+    defer parent_allocator.free(prompt_str);
 
     try stdout_write(prompt_str);
 }
