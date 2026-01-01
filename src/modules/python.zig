@@ -57,6 +57,8 @@ fn isPythonProject(cwd: []const u8) bool {
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
 
     // Check for common Python project files
+    // Note: .python-version is NOT included - it's a pyenv global version file,
+    // not a project indicator (matches Starship behavior)
     const check_files = [_][]const u8{
         "pyproject.toml",
         "requirements.txt",
@@ -64,7 +66,6 @@ fn isPythonProject(cwd: []const u8) bool {
         "setup.cfg",
         "Pipfile",
         "tox.ini",
-        ".python-version",
     };
 
     for (check_files) |file| {
