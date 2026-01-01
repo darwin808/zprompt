@@ -75,20 +75,8 @@ fn isPythonProject(cwd: []const u8) bool {
         } else |_| {}
     }
 
-    // Check for virtual environment directories
-    const venv_dirs = [_][]const u8{
-        "venv",
-        ".venv",
-        ".virtualenv",
-        "env",
-    };
-
-    for (venv_dirs) |dir| {
-        const path = std.fmt.bufPrint(&path_buf, "{s}/{s}/bin/python", .{ cwd, dir }) catch continue;
-        if (std.fs.cwd().access(path, .{})) |_| {
-            return true;
-        } else |_| {}
-    }
+    // Note: We intentionally don't check for venv directories as project indicators.
+    // Having a venv doesn't mean you're in a Python project (matches Starship behavior).
 
     return false;
 }
