@@ -142,6 +142,61 @@ fn getPythonVersion(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
 }
 
 fn getSystemPythonVersion(allocator: std.mem.Allocator) ![]u8 {
+    // 1. Try cache first (valid for 1 hour)
+    if (getVersionFromCache(allocator)) |ver| {
+        return ver;
+    } else |_| {}
+
+    // 2. Fall back to python --version (slow) and cache it
+    return getPythonVersionFromSubprocess(allocator);
+}
+
+fn getVersionFromCache(allocator: std.mem.Allocator) ![]u8 {
+    const home = std.posix.getenv("HOME") orelse return error.NoHome;
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const cache_path = try std.fmt.bufPrint(&path_buf, "{s}/.cache/zprompt/python-version", .{home});
+
+    const file = std.fs.cwd().openFile(cache_path, .{}) catch return error.CacheNotFound;
+    defer file.close();
+
+    // Check if cache is fresh (less than 1 hour old)
+    const stat = file.stat() catch return error.StatFailed;
+    const now = std.time.timestamp();
+    const cache_age = now - @as(i64, @intCast(@divFloor(stat.mtime, std.time.ns_per_s)));
+
+    if (cache_age > 3600) { // 1 hour
+        return error.CacheStale;
+    }
+
+    var buf: [64]u8 = undefined;
+    const bytes_read = file.readAll(&buf) catch return error.ReadFailed;
+    if (bytes_read == 0) return error.EmptyCache;
+
+    const version = std.mem.trim(u8, buf[0..bytes_read], " \t\n\r");
+    if (version.len == 0) return error.EmptyCache;
+
+    return try allocator.dupe(u8, version);
+}
+
+fn writeVersionToCache(version: []const u8) void {
+    const home = std.posix.getenv("HOME") orelse return;
+
+    var dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const cache_dir = std.fmt.bufPrint(&dir_buf, "{s}/.cache/zprompt", .{home}) catch return;
+
+    std.fs.cwd().makePath(cache_dir) catch {};
+
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const cache_path = std.fmt.bufPrint(&path_buf, "{s}/.cache/zprompt/python-version", .{home}) catch return;
+
+    const file = std.fs.cwd().createFile(cache_path, .{}) catch return;
+    defer file.close();
+
+    _ = file.writeAll(version) catch {};
+}
+
+fn getPythonVersionFromSubprocess(allocator: std.mem.Allocator) ![]u8 {
     // Try python3 first, then python
     const commands = [_][]const []const u8{
         &.{ "python3", "--version" },
@@ -181,6 +236,8 @@ fn getSystemPythonVersion(allocator: std.mem.Allocator) ![]u8 {
                 end += 1;
             }
             if (end > 0) {
+                // Cache the result
+                writeVersionToCache(version[0..end]);
                 return try allocator.dupe(u8, version[0..end]);
             }
         }
