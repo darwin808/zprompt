@@ -3,6 +3,7 @@ const ansi = @import("../utils/ansi.zig");
 
 pub const RustInfo = struct {
     version: ?[]const u8 = null,
+    package_version: ?[]const u8 = null,
 };
 
 /// Detect Rust project without rendering (for parallel execution)
@@ -12,20 +13,33 @@ pub fn detect(allocator: std.mem.Allocator, cwd: []const u8) ?RustInfo {
     }
 
     var info = RustInfo{};
+    info.package_version = getPackageVersion(allocator, cwd) catch null;
     info.version = getRustVersion(allocator) catch null;
     return info;
 }
 
 /// Render Rust info from pre-computed detection result
 pub fn renderFromInfo(writer: anytype, info: RustInfo) !bool {
-    if (info.version) |ver| {
-        try ansi.fg(writer, "via ", ansi.muted_color);
-        // Rust icon U+E7A8
-        try ansi.bold(writer, "\xee\x9e\xa8 v", ansi.rust_color);
-        try ansi.fg(writer, ver, ansi.rust_color);
-        return true;
+    var rendered = false;
+
+    // Show package version (📦 v0.4.0)
+    if (info.package_version) |pkg_ver| {
+        try ansi.fg(writer, "is ", ansi.muted_color);
+        try ansi.bold(writer, "📦 v", ansi.package_color);
+        try ansi.fg(writer, pkg_ver, ansi.package_color);
+        rendered = true;
     }
-    return false;
+
+    // Show Rust version (🦀 v1.91.1)
+    if (info.version) |ver| {
+        if (rendered) try writer.writeAll(" ");
+        try ansi.fg(writer, "via ", ansi.muted_color);
+        try ansi.bold(writer, "🦀 v", ansi.rust_color);
+        try ansi.fg(writer, ver, ansi.rust_color);
+        rendered = true;
+    }
+
+    return rendered;
 }
 
 /// Convenience wrapper for non-parallel use
@@ -33,6 +47,7 @@ pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !b
     const info = detect(allocator, cwd) orelse return false;
     defer {
         if (info.version) |v| allocator.free(v);
+        if (info.package_version) |pv| allocator.free(pv);
     }
     return try renderFromInfo(writer, info);
 }
@@ -52,6 +67,56 @@ fn isRustProject(cwd: []const u8) bool {
     } else |_| {}
 
     return false;
+}
+
+fn getPackageVersion(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const cargo_path = try std.fmt.bufPrint(&path_buf, "{s}/Cargo.toml", .{cwd});
+
+    const content = std.fs.cwd().readFileAlloc(allocator, cargo_path, 1024 * 1024) catch {
+        return error.FileNotFound;
+    };
+    defer allocator.free(content);
+
+    // Simple TOML parsing for version = "x.y.z" in [package] section
+    // Look for version after [package]
+    var in_package = false;
+    var lines = std.mem.splitScalar(u8, content, '\n');
+
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+
+        // Check for [package] section
+        if (std.mem.eql(u8, trimmed, "[package]")) {
+            in_package = true;
+            continue;
+        }
+
+        // Check for other sections
+        if (trimmed.len > 0 and trimmed[0] == '[') {
+            in_package = false;
+            continue;
+        }
+
+        // Look for version in package section
+        if (in_package) {
+            if (std.mem.startsWith(u8, trimmed, "version")) {
+                // Find = sign
+                if (std.mem.indexOf(u8, trimmed, "=")) |eq_pos| {
+                    var value = std.mem.trim(u8, trimmed[eq_pos + 1 ..], " \t");
+                    // Remove quotes
+                    if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
+                        value = value[1 .. value.len - 1];
+                    }
+                    if (value.len > 0) {
+                        return try allocator.dupe(u8, value);
+                    }
+                }
+            }
+        }
+    }
+
+    return error.VersionNotFound;
 }
 
 fn getRustVersion(allocator: std.mem.Allocator) ![]u8 {

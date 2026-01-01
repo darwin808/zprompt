@@ -1,6 +1,9 @@
 const std = @import("std");
 const ansi = @import("utils/ansi.zig");
-const shell = @import("shell/zsh.zig");
+const zsh = @import("shell/zsh.zig");
+const bash = @import("shell/bash.zig");
+const fish = @import("shell/fish.zig");
+const powershell = @import("shell/powershell.zig");
 const prompt = @import("prompt.zig");
 const config = @import("config.zig");
 
@@ -48,13 +51,19 @@ fn printUsage() !void {
         \\    zprompt <COMMAND>
         \\
         \\COMMANDS:
-        \\    init <SHELL>    Print shell init script (only 'zsh' supported)
+        \\    init <SHELL>    Print shell init script
         \\    prompt          Print the prompt
         \\    help            Show this help message
         \\    version         Show version
         \\
+        \\SUPPORTED SHELLS:
+        \\    bash, zsh, fish, powershell
+        \\
         \\EXAMPLES:
         \\    eval "$(zprompt init zsh)"
+        \\    eval "$(zprompt init bash)"
+        \\    zprompt init fish | source
+        \\    Invoke-Expression (&zprompt init powershell)
         \\
     );
 }
@@ -65,15 +74,24 @@ fn printVersion() !void {
 
 fn handleInit(args: []const []const u8) !void {
     if (args.len == 0) {
-        try stdout_write("Error: missing shell argument. Use: zprompt init zsh\n");
+        try stdout_write("Error: missing shell argument. Use: zprompt init <shell>\n");
+        try stdout_write("Supported shells: bash, zsh, fish, powershell\n");
         return;
     }
 
     const shell_name = args[0];
     if (std.mem.eql(u8, shell_name, "zsh")) {
-        try stdout_write(shell.zsh_init_script);
+        try stdout_write(zsh.zsh_init_script);
+    } else if (std.mem.eql(u8, shell_name, "bash")) {
+        try stdout_write(bash.bash_init_script);
+    } else if (std.mem.eql(u8, shell_name, "fish")) {
+        try stdout_write(fish.fish_init_script);
+    } else if (std.mem.eql(u8, shell_name, "powershell") or std.mem.eql(u8, shell_name, "pwsh")) {
+        try stdout_write(powershell.powershell_init_script);
     } else {
-        try stdout_write("Error: unsupported shell. Only 'zsh' is supported.\n");
+        try stdout_write("Error: unsupported shell '");
+        try stdout_write(shell_name);
+        try stdout_write("'\nSupported shells: bash, zsh, fish, powershell\n");
     }
 }
 
