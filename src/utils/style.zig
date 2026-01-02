@@ -53,36 +53,41 @@ pub fn parse(style_str: []const u8) ansi.Style {
 
 fn parseColor(name: []const u8) ?ansi.Color {
     // Standard colors
-    if (std.mem.eql(u8, name, "black")) return .black;
-    if (std.mem.eql(u8, name, "red")) return .red;
-    if (std.mem.eql(u8, name, "green")) return .green;
-    if (std.mem.eql(u8, name, "yellow")) return .yellow;
-    if (std.mem.eql(u8, name, "blue")) return .blue;
-    if (std.mem.eql(u8, name, "magenta") or std.mem.eql(u8, name, "purple")) return .magenta;
-    if (std.mem.eql(u8, name, "cyan")) return .cyan;
-    if (std.mem.eql(u8, name, "white")) return .white;
+    if (std.mem.eql(u8, name, "black")) return ansi.Color.black;
+    if (std.mem.eql(u8, name, "red")) return ansi.Color.red;
+    if (std.mem.eql(u8, name, "green")) return ansi.Color.green;
+    if (std.mem.eql(u8, name, "yellow")) return ansi.Color.yellow;
+    if (std.mem.eql(u8, name, "blue")) return ansi.Color.blue;
+    if (std.mem.eql(u8, name, "magenta") or std.mem.eql(u8, name, "purple")) return ansi.Color.magenta;
+    if (std.mem.eql(u8, name, "cyan")) return ansi.Color.cyan;
+    if (std.mem.eql(u8, name, "white")) return ansi.Color.white;
 
     // Bright colors
-    if (std.mem.eql(u8, name, "bright-black") or std.mem.eql(u8, name, "bright_black")) return .bright_black;
-    if (std.mem.eql(u8, name, "bright-red") or std.mem.eql(u8, name, "bright_red")) return .bright_red;
-    if (std.mem.eql(u8, name, "bright-green") or std.mem.eql(u8, name, "bright_green")) return .bright_green;
-    if (std.mem.eql(u8, name, "bright-yellow") or std.mem.eql(u8, name, "bright_yellow")) return .bright_yellow;
-    if (std.mem.eql(u8, name, "bright-blue") or std.mem.eql(u8, name, "bright_blue")) return .bright_blue;
+    if (std.mem.eql(u8, name, "bright-black") or std.mem.eql(u8, name, "bright_black")) return ansi.Color.bright_black;
+    if (std.mem.eql(u8, name, "bright-red") or std.mem.eql(u8, name, "bright_red")) return ansi.Color.bright_red;
+    if (std.mem.eql(u8, name, "bright-green") or std.mem.eql(u8, name, "bright_green")) return ansi.Color.bright_green;
+    if (std.mem.eql(u8, name, "bright-yellow") or std.mem.eql(u8, name, "bright_yellow")) return ansi.Color.bright_yellow;
+    if (std.mem.eql(u8, name, "bright-blue") or std.mem.eql(u8, name, "bright_blue")) return ansi.Color.bright_blue;
     if (std.mem.eql(u8, name, "bright-magenta") or std.mem.eql(u8, name, "bright_magenta") or
-        std.mem.eql(u8, name, "bright-purple") or std.mem.eql(u8, name, "bright_purple")) return .bright_magenta;
-    if (std.mem.eql(u8, name, "bright-cyan") or std.mem.eql(u8, name, "bright_cyan")) return .bright_cyan;
-    if (std.mem.eql(u8, name, "bright-white") or std.mem.eql(u8, name, "bright_white")) return .bright_white;
+        std.mem.eql(u8, name, "bright-purple") or std.mem.eql(u8, name, "bright_purple")) return ansi.Color.bright_magenta;
+    if (std.mem.eql(u8, name, "bright-cyan") or std.mem.eql(u8, name, "bright_cyan")) return ansi.Color.bright_cyan;
+    if (std.mem.eql(u8, name, "bright-white") or std.mem.eql(u8, name, "bright_white")) return ansi.Color.bright_white;
 
-    // Hex color support (#RGB or #RRGGBB) - map to nearest basic color
+    // 256-color support (e.g., "208" for orange)
+    if (std.fmt.parseInt(u8, name, 10)) |color_num| {
+        return ansi.Color{ .extended = color_num };
+    } else |_| {}
+
+    // Hex color support (#RGB or #RRGGBB) - use 256-color approximation
     if (name.len > 0 and name[0] == '#') {
-        return hexToNearestColor(name[1..]);
+        return hexToColor(name[1..]);
     }
 
     return null;
 }
 
-fn hexToNearestColor(hex: []const u8) ?ansi.Color {
-    // Parse hex color and map to nearest 16 colors
+fn hexToColor(hex: []const u8) ?ansi.Color {
+    // Parse hex color and convert to 256-color palette
     var r: u8 = 0;
     var g: u8 = 0;
     var b: u8 = 0;
@@ -101,37 +106,14 @@ fn hexToNearestColor(hex: []const u8) ?ansi.Color {
         return null;
     }
 
-    // Simple nearest-color mapping
-    const bright = (r > 127 or g > 127 or b > 127);
-    const max_channel = @max(r, @max(g, b));
+    // Convert RGB to 256-color palette (216 color cube + 24 grayscale)
+    // Color cube: 16 + 36*r + 6*g + b where r,g,b are 0-5
+    const r6 = @as(u8, @intCast(@min(5, @as(u16, r) * 6 / 256)));
+    const g6 = @as(u8, @intCast(@min(5, @as(u16, g) * 6 / 256)));
+    const b6 = @as(u8, @intCast(@min(5, @as(u16, b) * 6 / 256)));
 
-    // Determine base color
-    if (max_channel < 50) {
-        return if (bright) .bright_black else .black;
-    }
-
-    // Find dominant color(s)
-    const r_dom = r > 100;
-    const g_dom = g > 100;
-    const b_dom = b > 100;
-
-    if (r_dom and g_dom and b_dom) {
-        return if (bright) .bright_white else .white;
-    } else if (r_dom and g_dom) {
-        return if (bright) .bright_yellow else .yellow;
-    } else if (r_dom and b_dom) {
-        return if (bright) .bright_magenta else .magenta;
-    } else if (g_dom and b_dom) {
-        return if (bright) .bright_cyan else .cyan;
-    } else if (r_dom) {
-        return if (bright) .bright_red else .red;
-    } else if (g_dom) {
-        return if (bright) .bright_green else .green;
-    } else if (b_dom) {
-        return if (bright) .bright_blue else .blue;
-    }
-
-    return .white;
+    const color_index = 16 + 36 * r6 + 6 * g6 + b6;
+    return ansi.Color{ .extended = color_index };
 }
 
 fn parseHexDigit(c: u8) ?u8 {
