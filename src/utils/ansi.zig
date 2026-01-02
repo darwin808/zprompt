@@ -100,12 +100,12 @@ pub fn fg(writer: anytype, text: []const u8, color: Color) !void {
     try colored(writer, text, .{ .fg = color });
 }
 
-// Starship-style colors
-pub const dir_color = Color.yellow;
-pub const git_branch_color = Color.yellow;
+// Starship-style colors (matching Starship defaults)
+pub const dir_color = Color.cyan;
+pub const git_branch_color = Color.magenta; // Starship default is purple
 pub const git_status_color = Color.red;
 pub const node_color = Color.green;
-pub const package_color = Color.yellow; // 208 in 256-color, using yellow
+pub const package_color = Color.bright_yellow; // Starship uses 208 (orange), bright yellow is closest
 pub const rust_color = Color.red;
 pub const java_color = Color.red;
 pub const go_color = Color.cyan;
@@ -113,7 +113,7 @@ pub const python_color = Color.yellow;
 pub const ruby_color = Color.red;
 pub const docker_color = Color.blue;
 pub const time_color = Color.yellow;
-pub const username_color = Color.green;
+pub const username_color = Color.yellow; // Starship default
 pub const hostname_color = Color.green;
 pub const duration_color = Color.yellow;
 pub const success_color = Color.green;
