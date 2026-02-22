@@ -1,5 +1,6 @@
 const std = @import("std");
 const index_parser = @import("index.zig");
+const tree = @import("tree.zig");
 
 /// Native git status result (subset of what git status provides)
 pub const NativeStatus = struct {
@@ -7,6 +8,7 @@ pub const NativeStatus = struct {
     modified: u32 = 0,
     deleted: u32 = 0,
     conflicted: u32 = 0,
+    staged_reliable: bool = false,
     // Note: untracked requires full directory walk, skip for performance
 };
 
@@ -67,10 +69,14 @@ pub fn getStatus(allocator: std.mem.Allocator, git_dir: []const u8, cwd: []const
         }
     }
 
-    // Staged files: For now, we'd need to compare index with HEAD tree
-    // This requires parsing tree objects, which is complex
-    // Keep using git status for staged count, or approximate as 0
-    // TODO: Implement tree parsing for accurate staged count
+    // Compare index entries against HEAD tree for staged count
+    if (tree.countStaged(arena, git_dir, idx.entries)) |staged| {
+        status.staged = staged;
+        status.staged_reliable = true;
+    } else |_| {
+        status.staged = 0;
+        status.staged_reliable = false;
+    }
 
     return status;
 }

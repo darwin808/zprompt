@@ -57,7 +57,7 @@ pub const DirectoryConfig = struct {
     truncate_to_repo: bool = true,
     format: []const u8 = "[$path]($style) ",
     style: []const u8 = "bold cyan",
-    home_symbol: []const u8 = "~",
+    home_symbol: []const u8 = "💦",
 };
 
 pub const GitBranchConfig = struct {

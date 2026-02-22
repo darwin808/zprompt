@@ -173,8 +173,11 @@ fn getStatus(allocator: std.mem.Allocator, cwd: []const u8) !GitStatus {
         status.modified = native.modified;
         status.deleted = native.deleted;
         status.conflicted = native.conflicted;
-        // Native doesn't detect staged (needs tree comparison) or untracked (needs dir walk)
-        // Fall back to subprocess for those if needed
+        status.staged = native.staged;
+        // Fall back to subprocess if native tree parsing failed
+        if (!native.staged_reliable) {
+            getStagedFromSubprocess(allocator, cwd, &status);
+        }
     } else |_| {
         // Native parsing failed, fall back to subprocess
         getStatusFromSubprocess(allocator, cwd, &status);
@@ -249,6 +252,20 @@ fn getStatusFromSubprocess(allocator: std.mem.Allocator, cwd: []const u8, status
             status.conflicted += 1;
         }
     }
+}
+
+fn getStagedFromSubprocess(allocator: std.mem.Allocator, cwd: []const u8, status: *GitStatus) void {
+    const result = runGitCommand(allocator, cwd, &.{ "diff-index", "--cached", "--name-only", "HEAD" }) catch return;
+    defer allocator.free(result);
+
+    if (result.len == 0) return;
+
+    var count: u32 = 0;
+    var lines = std.mem.splitScalar(u8, result, '\n');
+    while (lines.next()) |line| {
+        if (line.len > 0) count += 1;
+    }
+    status.staged = count;
 }
 
 fn getBranch(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {

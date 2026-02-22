@@ -33,7 +33,7 @@ fn getDisplayPath(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
     if (home.len > 0 and std.mem.startsWith(u8, cwd, home)) {
         const relative = cwd[home.len..];
         if (relative.len == 0) {
-            return try allocator.dupe(u8, "~");
+            return try allocator.dupe(u8, "💦");
         }
         // Show ~/last_folder or truncated path
         return try truncatePath(allocator, cwd, home, 3);
@@ -114,14 +114,14 @@ fn truncatePath(allocator: std.mem.Allocator, path: []const u8, home: []const u8
 
     if (items.len <= keep_components) {
         // Show full path with ~
-        try result.append(allocator, '~');
+        try result.appendSlice(allocator, "💦");
         try result.appendSlice(allocator, relative);
         return result.toOwnedSlice(allocator);
     }
 
     // Take last N components with ~
     const start_idx = items.len - keep_components;
-    try result.appendSlice(allocator, "~/…/");
+    try result.appendSlice(allocator, "💦/…/");
 
     for (items[start_idx..], 0..) |comp, i| {
         if (i > 0) try result.append(allocator, '/');
