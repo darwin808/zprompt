@@ -1,14 +1,14 @@
 const std = @import("std");
 const ansi = @import("../utils/ansi.zig");
 
-pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8) !void {
-    const display_path = try getDisplayPath(allocator, cwd);
+pub fn render(writer: anytype, allocator: std.mem.Allocator, cwd: []const u8, home_symbol: []const u8) !void {
+    const display_path = try getDisplayPath(allocator, cwd, home_symbol);
     defer allocator.free(display_path);
 
     try ansi.bold(writer, display_path, ansi.dir_color);
 }
 
-fn getDisplayPath(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
+fn getDisplayPath(allocator: std.mem.Allocator, cwd: []const u8, home_symbol: []const u8) ![]u8 {
     // Get home directory
     const home = std.posix.getenv("HOME") orelse "";
 
@@ -33,10 +33,10 @@ fn getDisplayPath(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
     if (home.len > 0 and std.mem.startsWith(u8, cwd, home)) {
         const relative = cwd[home.len..];
         if (relative.len == 0) {
-            return try allocator.dupe(u8, "💦");
+            return try allocator.dupe(u8, home_symbol);
         }
         // Show ~/last_folder or truncated path
-        return try truncatePath(allocator, cwd, home, 3);
+        return try truncatePath(allocator, cwd, home, 3, home_symbol);
     }
 
     // Truncate path if too long (keep last 3 components)
@@ -89,7 +89,7 @@ fn getLastComponentSlice(path: []const u8) []const u8 {
     return path[start..end];
 }
 
-fn truncatePath(allocator: std.mem.Allocator, path: []const u8, home: []const u8, keep_components: usize) ![]u8 {
+fn truncatePath(allocator: std.mem.Allocator, path: []const u8, home: []const u8, keep_components: usize, home_symbol: []const u8) ![]u8 {
     if (path.len == 0) return try allocator.dupe(u8, "");
 
     // Get path relative to home
@@ -114,14 +114,15 @@ fn truncatePath(allocator: std.mem.Allocator, path: []const u8, home: []const u8
 
     if (items.len <= keep_components) {
         // Show full path with ~
-        try result.appendSlice(allocator, "💦");
+        try result.appendSlice(allocator, home_symbol);
         try result.appendSlice(allocator, relative);
         return result.toOwnedSlice(allocator);
     }
 
-    // Take last N components with ~
+    // Take last N components
     const start_idx = items.len - keep_components;
-    try result.appendSlice(allocator, "💦/…/");
+    try result.appendSlice(allocator, home_symbol);
+    try result.appendSlice(allocator, "/…/");
 
     for (items[start_idx..], 0..) |comp, i| {
         if (i > 0) try result.append(allocator, '/');

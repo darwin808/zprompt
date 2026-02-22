@@ -98,7 +98,7 @@ pub fn render(result_allocator: std.mem.Allocator, temp_allocator: std.mem.Alloc
 
     // Directory (fast, run synchronously)
     if (!cfg.directory.disabled) {
-        try directory.render(writer, temp_allocator, cwd);
+        try directory.render(writer, temp_allocator, cwd, cfg.directory.home_symbol);
         try writer.writeAll(" ");
     }
 
